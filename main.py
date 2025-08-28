@@ -8,6 +8,10 @@ from PyQt6.QtGui import QFont
 
 from logica import normalize_symbols, simplify_expression
 
+class CustomLineEdit(QLineEdit):
+    def keyPressEvent(self, event):
+        pass
+
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -27,15 +31,31 @@ class MainWindow(QWidget):
 
         self.input_label = QLabel("Ingrese la expresión booleana:")
         self.input_label.setFont(font_label)
-        self.input_edit = QLineEdit()
+        self.input_edit = CustomLineEdit()
         self.input_edit.setFont(font_input)
         self.input_edit.setMinimumHeight(40)
         layout.addWidget(self.input_label)
         layout.addWidget(self.input_edit)
 
+        chars_layout = QHBoxLayout()
+        for char in ['A', 'B', 'C', 'D', 'E', 'F', '0', '1']:
+            btn = QPushButton(char)
+            btn.setFont(font_btn)
+            btn.setMinimumHeight(50)
+            btn.setMinimumWidth(60)
+            btn.clicked.connect(lambda _, c=char: self.input_edit.insert(c))
+            chars_layout.addWidget(btn)
+        btn_del = QPushButton("Eliminar")
+        btn_del.setFont(font_btn)
+        btn_del.setMinimumHeight(50)
+        btn_del.setMinimumWidth(90)
+        btn_del.clicked.connect(self.eliminar_caracter)
+        chars_layout.addWidget(btn_del)
+        layout.addLayout(chars_layout)
+
         logic_btn_layout = QHBoxLayout()
-        self.btn_and = QPushButton("∧ (AND)")
-        self.btn_or = QPushButton("∨ (OR)")
+        self.btn_and = QPushButton("*")
+        self.btn_or = QPushButton("+")
         self.btn_not = QPushButton("¬ (NOT)")
         self.btn_paren_open = QPushButton("(")
         self.btn_paren_close = QPushButton(")")
@@ -46,8 +66,8 @@ class MainWindow(QWidget):
             logic_btn_layout.addWidget(btn)
         layout.addLayout(logic_btn_layout)
 
-        self.btn_and.clicked.connect(lambda: self.input_edit.insert("∧"))
-        self.btn_or.clicked.connect(lambda: self.input_edit.insert("∨"))
+        self.btn_and.clicked.connect(lambda: self.input_edit.insert("*"))
+        self.btn_or.clicked.connect(lambda: self.input_edit.insert("+"))
         self.btn_not.clicked.connect(lambda: self.input_edit.insert("¬"))
         self.btn_paren_open.clicked.connect(lambda: self.input_edit.insert("("))
         self.btn_paren_close.clicked.connect(lambda: self.input_edit.insert(")"))
@@ -78,15 +98,20 @@ class MainWindow(QWidget):
         self.btn_resultado.clicked.connect(self.mostrar_resultado)
         self.btn_salir.clicked.connect(self.close)
 
+    def eliminar_caracter(self):
+        text = self.input_edit.text()
+        self.input_edit.setText(text[:-1])
+
     def ingresar_expresion(self):
         expr = self.input_edit.text().upper()
-        if any(char.isdigit() for char in expr):
-            QMessageBox.critical(self, "Error de validación", "No se permiten números en la expresión.")
-            return
         try:
             expr_norm = normalize_symbols(expr)
-        except Exception as e:
-            QMessageBox.critical(self, "Error de validación", str(e))
+            _, steps = simplify_expression(expr_norm)
+        except Exception:
+            QMessageBox.warning(self, "Expresión inválida", "La expresión ingresada no es válida.")
+            self.input_edit.clear()
+            self.expr = ""
+            self.steps = []
             return
         self.expr = expr_norm
         self.steps = []
@@ -97,34 +122,47 @@ class MainWindow(QWidget):
         if not self.expr:
             QMessageBox.warning(self, "Atención", "Ingrese una expresión válida primero.")
             return
-        if not self.steps:
-            _, steps = simplify_expression(self.expr)
-            self.steps = steps
-            self.current_step = 0
-        if self.current_step < len(self.steps):
-            paso = self.steps[self.current_step]
-            self.output.append(
-                f"<b>Paso {self.current_step+1}:</b><br>"
-                f"<b>Antes:</b> {paso['before']}<br>"
-                f"<b>Ley:</b> {paso['law']}<br>"
-                f"<b>Después:</b> {paso['after']}<br>"
-            )
-            self.current_step += 1
-        else:
-            self.output.append("<i>No hay más pasos.</i>\n")
+        try:
+            if not self.steps:
+                _, steps = simplify_expression(self.expr)
+                self.steps = steps
+                self.current_step = 0
+            if self.current_step < len(self.steps):
+                paso = self.steps[self.current_step]
+                self.output.append(
+                    f"<b>Paso {self.current_step+1}:</b><br>"
+                    f"<b>Antes:</b> {paso['before']}<br>"
+                    f"<b>Ley:</b> {paso['law']}<br>"
+                    f"<b>Después:</b> {paso['after']}<br>"
+                )
+                self.current_step += 1
+            else:
+                self.output.append("<i>No hay más pasos.</i>\n")
+        except Exception:
+            QMessageBox.warning(self, "Expresión inválida", "La expresión ingresada no es válida.")
+            self.input_edit.clear()
+            self.expr = ""
+            self.steps = []
 
     def mostrar_resultado(self):
         if not self.expr:
-            QMessageBox.warning(self, "Atención", "Ingrese una expresión válida primero.")
+            QMessageBox.warning(self, "Ingrese una expresión válida primero")
             return
-        resultado, steps = simplify_expression(self.expr)
-        self.output.append("<b>Resultado final simplificado:</b>")
-        self.output.append(f"<b>{resultado}</b>")
-        self.output.append("<b>Pasos realizados:</b>")
-        for i, paso in enumerate(steps):
-            self.output.append(
-                f"Paso {i+1}: {paso['before']} → {paso['law']} → {paso['after']}"
-            )
+        self.input_edit.clear()
+        try:
+            resultado, steps = simplify_expression(self.expr)
+            self.output.append("<b>Resultado final simplificado:</b>")
+            self.output.append(f"<b>{resultado}</b>")
+            self.output.append("<b>Pasos realizados:</b>")
+            for i, paso in enumerate(steps):
+                self.output.append(
+                    f"Paso {i+1}: {paso['before']} → {paso['law']} → {paso['after']}"
+                )
+        except Exception:
+            QMessageBox.warning(self, "La expresión ingresada no es válida")
+            self.input_edit.clear()
+            self.expr = ""
+            self.steps = []
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
